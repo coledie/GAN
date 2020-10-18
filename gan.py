@@ -28,36 +28,6 @@ If D gets too good log(1 - D(G(z))) will saturate.
 Instead of training G to minimize log(1 - D(G(z))),
 can maximize D(G(z)) in order to get better gradients in early learning.
 """
-""" Network Configuration
-Step 1 MNIST, then Toronto Face Database and CIFAR-10.
-
-Generator
-----------
-Mix of rectifier linear and sigmoid activations.
-Input: Noise
-Output: Generative sample
-
-Discriminator
--------------
-Maxout activations.
-Dropout.
-Input: Image
-Output: Classification - Generated or real.
-"""
-""" Training
-# Minibatch SGD of GAN. Number of steps apply to discriminator, k=1.
-# used momentum in their experiments.
-for number of training iterations:
-    for k steps:
-        sample minbatch of m noise samples {z_1...} from noise prior p_g(z)
-        sample minibatch of m examples {x_1...} from generating dist p_data(x)
-        update discriminator by ascending its stochastic gradient:
-        = grad(theta_d) 1/m sum_i in m(log(d(x_i)) + log(1 - D(G(z_i)))).
-    
-    sample minibatch of m noise samples {z_1...} from noise prior p_g(z)
-    update generator by descending its stochastic gradent:
-    = grad(theta_g) 1 / m sum_i in m(log(1 - D(G(z_i))))
-"""
 import numpy as np
 import pandas as pd
 import sklearn as skl
@@ -89,7 +59,7 @@ class MNIST(Dataset):
         return len(self.images)
 
     def __getitem__(self, idx):
-        if not isinstance(idx, list):
+        if not isinstance(idx, (list, np.ndarray)):
             idx = [idx]
 
         images = torch.from_numpy(self.images.iloc[idx].values).float()
@@ -102,10 +72,21 @@ class MNIST(Dataset):
         for i in range(0, len(self), self.batch_size):
             yield self[i + np.arange(self.batch_size)]
 
+    def sample(self):
+        """
+        Sample random batch_size.
+        """
+        return self[np.random.randint(0, len(self), size=self.batch_size)]
 
-class Generator:
+
+
+class Generator(nn.Module):
     """
     Generate random samples.
+
+    Mix of rectifier linear and sigmoid activations.
+    Input: Noise
+    Output: Generative sample
     """
     def __init__(self):
         pass
@@ -114,9 +95,15 @@ class Generator:
         pass
 
 
-class Discriminator:
+class Discriminator(nn.Module):
     """
     Determine whether sample is real or generated.
+
+    Maxout activations.
+    Dropout.
+
+    Input: Image
+    Output: Classification - Generated or real.
     """
     def __init__(self):
         pass
@@ -126,8 +113,34 @@ class Discriminator:
 
 
 if __name__ == '__main__':
-    train_set = MNIST('mnist_train.csv', batch_size=1)
+    N_EPOCH = 10
+    DISCRIMINATOR_STEPS = 1
+    BATCH_SIZE = 4  # TODO what is m for mnist?
 
+    train_set = MNIST('mnist_train.csv', batch_size=BATCH_SIZE)
+
+    print(train_set.sample(), len(train_set.sample()[0]))
     ## TODO Init models
 
-    ## TODO Training loop
+    gen_criterion = nn.CrossEntropyLoss()  # TODO replace with Generator / Discriminator Loss
+    disc_criterion = nn.CrossEntropyLoss()  # TODO replace with Generator / Discriminator Loss
+    
+    # TODO momentum for both?
+    gen_optimizer = torch.optim.SGD(generator.parameters(), lr=0.0001, momentum=0)
+    disc_optimizer = torch.optim.SGD(discriminator.parameters(), lr=0.0001, momentum=0)
+
+    for epoch in range(N_EPOCH):
+        for k in range(DISCRIMINATOR_STEPS):
+            disc_optimizer.zero_grad()
+
+            z = p_g(z, size=BATCH_SIZE)
+            x = train_set.sample()[0]  # p_data()
+
+            #discriminator.backward() = ascending grad(theta_d) 1/m sum_i in m(log(d(x_i)) + log(1 - D(G(z_i)))).
+
+        gen_optimizer.zero_grad()
+
+        z = p_g(z, size=BATCH_SIZE)
+        #generator.backward() = descending grad(theta_g) 1 / m sum_i in m(log(1 - D(G(z_i))))
+
+    ## TODO generate some test samples
