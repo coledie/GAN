@@ -64,10 +64,12 @@ import sklearn as skl
 
 import torch
 from torch import nn
+import torch.nn.functional as F
+from torch.utils.data import Dataset
 
 
 class MNIST(Dataset):
-    def __init__(self, filename, batch_size, train=True, shuffle=True):
+    def __init__(self, filename, batch_size=256, train=True, shuffle=True):
         self.batch_size = batch_size
 
         data = pd.read_csv(filename)
@@ -88,7 +90,7 @@ class MNIST(Dataset):
 
     def __getitem__(self, idx):
         if not isinstance(idx, list):
-            idx = list(idx)
+            idx = [idx]
 
         images = torch.from_numpy(self.images.iloc[idx].values).float()
         
@@ -124,6 +126,8 @@ class Discriminator:
 
 
 if __name__ == '__main__':
-    ## TODO read in MNIST dataset
+    train_set = MNIST('mnist_train.csv', batch_size=1)
 
-    ## TODO implement training loop
+    ## TODO Init models
+
+    ## TODO Training loop
