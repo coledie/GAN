@@ -1,8 +1,7 @@
 """
 GAN made with pytorch based on the paper,
 
-Generative Adversarial Nets.
-Goodfellow, Abadie, et al.
+Generative Adversarial Nets. Goodfellow, Abadie, et al.
 
 Params: https://github.com/goodfeli/adversarial/blob/master/mnist.yaml
 """
@@ -61,8 +60,6 @@ class Maxout(nn.Module):
         self.n_inputs = n_inputs
         self.n_outputs = n_outputs
         self.n_pieces = n_pieces
-
-        # TODO setup weight, bias shape
 
         self.weight = nn.Parameter(torch.Tensor(n_pieces, n_outputs, n_inputs))
         if bias:
@@ -149,15 +146,15 @@ class Generator(nn.Module):
 
         a, b, c, d = layers
 
-        self.l1 = nn.Linear(a, b)  # TODO irange .05
+        self.l1 = nn.Linear(a, b)  # ORIGINAL irange .05
         self.l2 = nn.Linear(b, c)
         self.l3 = nn.Linear(c, d)
 
     def forward(self, z) -> torch.Tensor:
         output = F.relu(self.l1(z))
         output = F.relu(self.l2(output))
-        output = torch.sigmoid(self.l3(output))
-        return output
+        output = self.l3(output)
+        return torch.sigmoid(output)
 
 
 class Discriminator(nn.Module):
@@ -175,16 +172,15 @@ class Discriminator(nn.Module):
 
         a, b, c, d = layers
 
-        self.l1 = Maxout(a, b, 5)  # TODO irange .005
+        self.l1 = Maxout(a, b, 5)  # ORIGINAL irange .005
         self.l2 = Maxout(b, c, 5)
         self.l3 = nn.Linear(c, d)
 
     def forward(self, x) -> int:
-        # TODO maxout: units = 240, pieces = 5
-        output = self.l1(x)
-        output = self.l2(output)
-        output = torch.sigmoid(self.l3(output))
-        return output
+        x = self.l1(x)
+        x = self.l2(x)
+        x = self.l3(x)
+        return torch.sigmoid(x)
 
 
 def noise(dimension, batch_size):
@@ -217,9 +213,10 @@ def gen_loss(disc_gen: torch.Tensor, batch_size: int) -> torch.Tensor:
 
 
 if __name__ == '__main__':
-    NOISE_SIZE = 100  # TODO unsure
+    NOISE_SIZE = 100
     BATCH_SIZE = 100
-    N_EPOCH = 3#50000 // BATCH_SIZE
+    N_EPOCH = 30
+    N_EPISODE = 50000 // BATCH_SIZE
     DISCRIMINATOR_STEPS = 1
 
     train_set = MNIST('mnist_train.csv', batch_size=BATCH_SIZE)
@@ -227,43 +224,47 @@ if __name__ == '__main__':
     generator = Generator((NOISE_SIZE, 1200, 1200, 784))
     discriminator = Discriminator((784, 240, 240, 1))
 
-    # TODO lr start=.1, decay_factor=1.000004, min=.000001; mo start=.5, stop=.7.
-    gen_optimizer = torch.optim.SGD(generator.parameters(), lr=0.0001, momentum=0.6)  
-    disc_optimizer = torch.optim.SGD(discriminator.parameters(), lr=0.0001, momentum=0.6)
+    # ORIGINAL lr start=.1, decay_factor=1.000004, min=.000001; mo start=.5, stop=.7.
+    gen_optimizer = torch.optim.Adam(generator.parameters(), lr=0.0002)  
+    disc_optimizer = torch.optim.Adam(discriminator.parameters(), lr=0.0002)
+    
+    try:
+        for epoch in range(N_EPOCH):
+            for episode in range(N_EPISODE):
+                disc_loss_total = 0
+                for k in range(DISCRIMINATOR_STEPS):
+                    disc_optimizer.zero_grad()
 
-    for epoch in range(N_EPOCH):
-        disc_loss_total = 0
-        for k in range(DISCRIMINATOR_STEPS):
-            disc_optimizer.zero_grad()
+                    z = noise(NOISE_SIZE, BATCH_SIZE)
+                    x_gen = generator.forward(z)
 
-            z = noise(NOISE_SIZE, BATCH_SIZE)
-            x_gen = generator.forward(z)
+                    x_real = train_set.sample()[0]
 
-            x_real = train_set.sample()[0]
+                    disc_gen = discriminator.forward(x_gen)
+                    disc_real = discriminator.forward(x_real)
 
-            disc_gen = discriminator.forward(x_gen)
-            disc_real = discriminator.forward(x_real)
+                    loss = disc_loss(disc_real, disc_gen, BATCH_SIZE)
+                    disc_loss_total += loss.item()
+                    loss.backward()
+                    disc_optimizer.step()
 
-            loss = disc_loss(disc_real, disc_gen, BATCH_SIZE)
-            disc_loss_total += loss.item()
-            loss.backward()
-            disc_optimizer.step()
+                gen_optimizer.zero_grad()
 
-        gen_optimizer.zero_grad()
+                z = noise(NOISE_SIZE, BATCH_SIZE)
+                x_gen = generator.forward(z)
 
-        z = noise(NOISE_SIZE, BATCH_SIZE)
-        x_gen = generator.forward(z)
+                disc_gen = discriminator.forward(x_gen)
 
-        disc_gen = discriminator.forward(x_gen)
+                loss = gen_loss(disc_gen, BATCH_SIZE)
+                gen_loss_total = loss.item()
+                loss.backward()
+                gen_optimizer.step()
 
-        loss = gen_loss(disc_gen, BATCH_SIZE)
-        gen_loss_total = loss.item()
-        loss.backward()
-        gen_optimizer.step()
+            print(f"{epoch} | Discriminator loss: {disc_loss_total}; Generator loss: {gen_loss_total};")
+    except KeyboardInterrupt:
+        pass
 
-        print(f"{epoch} | Discriminator loss: {disc_loss_total}; Generator loss: {gen_loss_total};")
-
-    n_rows, n_cols = 3, 3
+    n_rows, n_cols = 4, 4
     images = x_gen.squeeze().detach().numpy()[:n_rows * n_cols].reshape((-1, 28, 28))
 
     fig, axes = plt.subplots(nrows=n_rows, ncols=n_cols, figsize=(8, 8))
