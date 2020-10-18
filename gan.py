@@ -212,6 +212,20 @@ def gen_loss(disc_gen: torch.Tensor, batch_size: int) -> torch.Tensor:
     return 1 / batch_size * torch.log(1 - disc_gen).sum(0)
 
 
+def show_images(images):
+    n_rows, n_cols = 4, 4
+    images = images.squeeze().detach().numpy()[:n_rows * n_cols].reshape((-1, 28, 28))
+
+    fig, axes = plt.subplots(nrows=n_rows, ncols=n_cols, figsize=(8, 8))
+    for idx, image in enumerate(images):
+        row = idx // n_rows
+        col = idx % n_cols
+        axes[row, col].axis("off")
+        axes[row, col].imshow(image, cmap="gray", aspect="auto")
+    plt.subplots_adjust(wspace=.05, hspace=.05)
+    plt.show()
+
+
 if __name__ == '__main__':
     NOISE_SIZE = 100
     BATCH_SIZE = 100
@@ -261,17 +275,11 @@ if __name__ == '__main__':
                 gen_optimizer.step()
 
             print(f"{epoch} | Discriminator loss: {disc_loss_total}; Generator loss: {gen_loss_total};")
+
+            if epoch % 10 == 9:
+                show_images(x_gen)
+
     except KeyboardInterrupt:
         pass
 
-    n_rows, n_cols = 4, 4
-    images = x_gen.squeeze().detach().numpy()[:n_rows * n_cols].reshape((-1, 28, 28))
-
-    fig, axes = plt.subplots(nrows=n_rows, ncols=n_cols, figsize=(8, 8))
-    for idx, image in enumerate(images):
-        row = idx // n_rows
-        col = idx % n_cols
-        axes[row, col].axis("off")
-        axes[row, col].imshow(image, cmap="gray", aspect="auto")
-    plt.subplots_adjust(wspace=.05, hspace=.05)
-    plt.show()
+    show_images(x_gen)
