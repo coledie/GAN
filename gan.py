@@ -39,6 +39,61 @@ from torch import nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 
+import matplotlib.pyplot as plt
+
+
+class Maxout(nn.Module):
+    """
+    "Maxout Networks" Ian J. Goodfellow, David Warde-Farley,
+    Mehdi Mirza, Aaron Courville, and Yoshua Bengio. ICML 2013
+
+    Parameters
+    ----------
+    n_inputs: int
+    n_outputs : int
+        The number of maxout units to use in this layer.
+    n_pieces: int
+        The number of linear pieces to use in each maxout unit.
+    """
+    def __init__(self, n_inputs, n_outputs, n_pieces, bias=True):
+        super().__init__()
+
+        self.n_inputs = n_inputs
+        self.n_outputs = n_outputs
+        self.n_pieces = n_pieces
+
+        # TODO setup weight, bias shape
+
+        self.weight = nn.Parameter(torch.Tensor(n_pieces, n_outputs, n_inputs))
+        if bias:
+            self.bias = nn.Parameter(torch.Tensor(n_pieces, n_outputs))
+        else:
+            self.register_parameter('bias', None)
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        stdv = 1. / (self.weight.size(1) ** .5)
+        self.weight.data.uniform_(-stdv, stdv)
+        if self.bias is not None:
+            self.bias.data.uniform_(-stdv, stdv)
+
+    def forward(self, x):
+        """
+        max(w_1 * x + b_1, w_2 * x + b_2)
+        """
+        outputs = torch.zeros((self.n_pieces, x.shape[0] if len(x.shape) > 1 else 1, self.n_outputs))
+        for i in range(self.n_pieces):
+            outputs[i] = F.linear(x, self.weight[i], self.bias[i])
+
+        return outputs.max(0)[0]  # out, idx
+
+    def __repr__(self):
+        return self.__class__.__name__ + '(' \
+            + 'in_features=' + str(self.n_inputs) \
+            + ', out_features=' + str(self.n_outputs) \
+            + ', bias=' + str(self.bias is not None) + ')'
+
 
 class MNIST(Dataset):
     def __init__(self, filename, batch_size=256, train=True, shuffle=True):
@@ -81,7 +136,6 @@ class MNIST(Dataset):
         return self[np.random.randint(0, len(self), size=self.batch_size)]
 
 
-
 class Generator(nn.Module):
     """
     Generate random samples.
@@ -91,12 +145,19 @@ class Generator(nn.Module):
     Output: Generative sample
     """
     def __init__(self, layers):
-        # all but output should be rectified linear
-        # output = sigmoid
-        # irange = .05
+        super().__init__()
+
+        a, b, c, d = layers
+
+        self.l1 = nn.Linear(a, b)  # TODO irange .05
+        self.l2 = nn.Linear(b, c)
+        self.l3 = nn.Linear(c, d)
 
     def forward(self, z) -> torch.Tensor:
-        pass
+        output = F.relu(self.l1(z))
+        output = F.relu(self.l2(output))
+        output = torch.sigmoid(self.l3(output))
+        return output
 
 
 class Discriminator(nn.Module):
@@ -104,55 +165,112 @@ class Discriminator(nn.Module):
     Determine whether sample is real or generated.
 
     Maxout, sigmoid output activations.
-    Dropout.
+    Dropout - None for MNIST.
 
     Input: Image
     Output: Classification - Generated or real.
     """
     def __init__(self, layers):
-        # main maxout activation, output=sigmoid
-        # irange = .005
+        super().__init__()
 
-        # No dropout for mnist
+        a, b, c, d = layers
+
+        self.l1 = Maxout(a, b, 5)  # TODO irange .005
+        self.l2 = Maxout(b, c, 5)
+        self.l3 = nn.Linear(c, d)
 
     def forward(self, x) -> int:
-        pass
+        # TODO maxout: units = 240, pieces = 5
+        output = self.l1(x)
+        output = self.l2(output)
+        output = torch.sigmoid(self.l3(output))
+        return output
+
+
+def noise(dimension, batch_size):
+    """
+    Produce noise for generator.
+    """
+    return torch.rand((batch_size, dimension))
+
+
+def disc_loss(disc_real: torch.Tensor, disc_gen: torch.Tensor, batch_size: int) -> torch.Tensor:
+    """
+    Loss for discriminator.
+
+    NOTE: All inputs, operations must be done with PyTorch.
+
+    ascending grad(theta_d) 1/m sum_i in m(log(d(x_real_i)) + log(1 - D(G(z_i))))
+    """
+    return - 1 / batch_size * (torch.log(disc_real) + torch.log(1 - disc_gen)).sum()
+
+
+def gen_loss(disc_gen: torch.Tensor, batch_size: int) -> torch.Tensor:
+    """
+    Loss for generator.
+
+    NOTE: All inputs, operations must be done with PyTorch.
+
+    descending grad(theta_g) 1 / m sum_i in m(log(1 - D(G(z_i))))
+    """
+    return 1 / batch_size * torch.log(1 - disc_gen).sum(0)
 
 
 if __name__ == '__main__':
-    N_EPOCH = 10
-    DISCRIMINATOR_STEPS = 1
+    NOISE_SIZE = 100  # TODO unsure
     BATCH_SIZE = 100
+    N_EPOCH = 3#50000 // BATCH_SIZE
+    DISCRIMINATOR_STEPS = 1
 
-    train_set = MNIST('mnist_train.csv', batch_size=BATCH_SIZE)  # NOTE 10k of mnist
+    train_set = MNIST('mnist_train.csv', batch_size=BATCH_SIZE)
 
-    generator = Generator((1200, 1200, 784))
-    discriminator = Discriminator((240, 240, 1))
+    generator = Generator((NOISE_SIZE, 1200, 1200, 784))
+    discriminator = Discriminator((784, 240, 240, 1))
 
-    gen_criterion = nn.CrossEntropyLoss()  # TODO replace with Generator / Discriminator Loss
-    disc_criterion = nn.CrossEntropyLoss()  # TODO replace with Generator / Discriminator Loss
-    
     # TODO lr start=.1, decay_factor=1.000004, min=.000001; mo start=.5, stop=.7.
-    gen_optimizer = torch.optim.SGD(generator.parameters(), lr=0.1, momentum=0.5)  
-    disc_optimizer = torch.optim.SGD(discriminator.parameters(), lr=0.1, momentum=0.5)
+    gen_optimizer = torch.optim.SGD(generator.parameters(), lr=0.0001, momentum=0.6)  
+    disc_optimizer = torch.optim.SGD(discriminator.parameters(), lr=0.0001, momentum=0.6)
 
     for epoch in range(N_EPOCH):
+        disc_loss_total = 0
         for k in range(DISCRIMINATOR_STEPS):
             disc_optimizer.zero_grad()
 
-            z = noise(size=BATCH_SIZE)  # TODO what is dist of noise?
-            x_gen = p_g(z)
+            z = noise(NOISE_SIZE, BATCH_SIZE)
+            x_gen = generator.forward(z)
 
-            x_real = train_set.sample()[0]  # p_data()
+            x_real = train_set.sample()[0]
 
-            # TODO
-            #discriminator.backward() = ascending grad(theta_d) 1/m sum_i in m(log(d(x_real_i)) + log(1 - D(G(z_i)))).
+            disc_gen = discriminator.forward(x_gen)
+            disc_real = discriminator.forward(x_real)
+
+            loss = disc_loss(disc_real, disc_gen, BATCH_SIZE)
+            disc_loss_total += loss.item()
+            loss.backward()
+            disc_optimizer.step()
 
         gen_optimizer.zero_grad()
 
-        z = noise(size=BATCH_SIZE)  # TODO what is dist of noise?
-        x_gen = p_g(z, size=BATCH_SIZE)
-        # TODO
-        #generator.backward() = descending grad(theta_g) 1 / m sum_i in m(log(1 - D(G(z_i))))
+        z = noise(NOISE_SIZE, BATCH_SIZE)
+        x_gen = generator.forward(z)
 
-    ## TODO vis generated images
+        disc_gen = discriminator.forward(x_gen)
+
+        loss = gen_loss(disc_gen, BATCH_SIZE)
+        gen_loss_total = loss.item()
+        loss.backward()
+        gen_optimizer.step()
+
+        print(f"{epoch} | Discriminator loss: {disc_loss_total}; Generator loss: {gen_loss_total};")
+
+    n_rows, n_cols = 3, 3
+    images = x_gen.squeeze().detach().numpy()[:n_rows * n_cols].reshape((-1, 28, 28))
+
+    fig, axes = plt.subplots(nrows=n_rows, ncols=n_cols, figsize=(8, 8))
+    for idx, image in enumerate(images):
+        row = idx // n_rows
+        col = idx % n_cols
+        axes[row, col].axis("off")
+        axes[row, col].imshow(image, cmap="gray", aspect="auto")
+    plt.subplots_adjust(wspace=.05, hspace=.05)
+    plt.show()
