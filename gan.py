@@ -1,5 +1,8 @@
 """
 GAN made with pytorch based on the paper,
+Closer to a replication of the paper than a high performance
+model. Suffers from mode collapse often, can be remedied
+by replacing discriminator maxout layers with linear + dropout.
 
 Generative Adversarial Nets. Goodfellow, Abadie, et al.
 
@@ -146,17 +149,18 @@ class Generator(nn.Module):
     def __init__(self, layers):
         super().__init__()
 
-        a, b, c, d = layers
+        a, b, c, d, e = layers
 
-        self.l1 = nn.Linear(a, b)  # ORIGINAL irange .05
+        self.l1 = nn.Linear(a, b)
         self.l2 = nn.Linear(b, c)
         self.l3 = nn.Linear(c, d)
+        self.l4 = nn.Linear(d, e)
 
     def forward(self, z) -> torch.Tensor:
-        output = F.relu(self.l1(z))
-        output = F.relu(self.l2(output))
-        output = self.l3(output)
-        return torch.sigmoid(output)
+        x = F.leaky_relu(self.l1(z), 0.2)
+        x = F.leaky_relu(self.l2(x), 0.2)
+        x = F.leaky_relu(self.l3(x), 0.2)
+        return torch.tanh(self.l4(x))
 
 
 class Discriminator(nn.Module):
@@ -172,17 +176,19 @@ class Discriminator(nn.Module):
     def __init__(self, layers):
         super().__init__()
 
-        a, b, c, d = layers
+        a, b, c, d, e = layers
 
-        self.l1 = Maxout(a, b, 5)  # ORIGINAL irange .005
+        self.l1 = Maxout(a, b, 5)
         self.l2 = Maxout(b, c, 5)
-        self.l3 = nn.Linear(c, d)
+        self.l3 = Maxout(c, d, 5)
+        self.l4 = nn.Linear(d, e)
 
     def forward(self, x) -> int:
-        x = self.l1(x)
-        x = self.l2(x)
-        x = self.l3(x)
-        return torch.sigmoid(x)
+        # NOTE ReLu redundant w/ maxout?
+        x = F.leaky_relu(self.l1(x), 0.2)
+        x = F.leaky_relu(self.l2(x), 0.2)
+        x = F.leaky_relu(self.l3(x), 0.2)
+        return torch.sigmoid(self.l4(x))
 
 
 def noise(dimension, batch_size):
@@ -237,16 +243,16 @@ if __name__ == '__main__':
 
     train_set = MNIST('mnist_train.csv', batch_size=BATCH_SIZE)
 
-    generator = Generator((NOISE_SIZE, 1200, 1200, 784))
-    discriminator = Discriminator((784, 240, 240, 1))
+    generator = Generator((NOISE_SIZE, 256, 512, 1024, 784))
+    discriminator = Discriminator((784, 1024, 512, 256, 1))
 
     gen_optimizer = torch.optim.Adam(generator.parameters(), lr=.0002)  
     disc_optimizer = torch.optim.Adam(discriminator.parameters(), lr=.0002)
     
     try:
         for epoch in range(N_EPOCH):
+            disc_loss_total, gen_loss_total = 0, 0
             for episode in range(N_EPISODE):
-                disc_loss_total = 0
                 for k in range(DISCRIMINATOR_STEPS):
                     disc_optimizer.zero_grad()
 
@@ -271,12 +277,11 @@ if __name__ == '__main__':
                 disc_gen = discriminator.forward(x_gen)
 
                 loss = gen_loss(disc_gen, BATCH_SIZE)
-                gen_loss_total = loss.item()
+                gen_loss_total += loss.item()
                 loss.backward()
                 gen_optimizer.step()
 
             print(f"{epoch} | Discriminator loss: {disc_loss_total}; Generator loss: {gen_loss_total};")
-            show_images(x_gen)
 
             if epoch % 10 == 9:
                 show_images(x_gen)
