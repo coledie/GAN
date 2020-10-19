@@ -200,7 +200,7 @@ def disc_loss(disc_real: torch.Tensor, disc_gen: torch.Tensor, batch_size: int) 
 
     ascending grad(theta_d) 1/m sum_i in m(log(d(x_real_i)) + log(1 - D(G(z_i))))
     """
-    return 1 / batch_size * (torch.log(disc_real) + torch.log(1 - disc_gen)).sum()
+    return (-torch.log(disc_real.squeeze()) - torch.log(1 - disc_gen.squeeze())).mean(0)
 
 
 def gen_loss(disc_gen: torch.Tensor, batch_size: int) -> torch.Tensor:
@@ -211,7 +211,7 @@ def gen_loss(disc_gen: torch.Tensor, batch_size: int) -> torch.Tensor:
 
     descending grad(theta_g) 1 / m sum_i in m(log(1 - D(G(z_i))))
     """
-    return 1 / batch_size * torch.log(1 - disc_gen).sum(0)
+    return - torch.log(disc_gen.squeeze()).mean(0)
 
 
 def show_images(images):
@@ -231,7 +231,7 @@ def show_images(images):
 if __name__ == '__main__':
     NOISE_SIZE = 100
     BATCH_SIZE = 100
-    N_EPOCH = 40
+    N_EPOCH = 100
     N_EPISODE = 50000 // BATCH_SIZE
     DISCRIMINATOR_STEPS = 1
 
@@ -275,9 +275,8 @@ if __name__ == '__main__':
                 loss.backward()
                 gen_optimizer.step()
 
-                print(f"{epoch} | Discriminator loss: {disc_loss_total}; Generator loss: {gen_loss_total};")
-
             print(f"{epoch} | Discriminator loss: {disc_loss_total}; Generator loss: {gen_loss_total};")
+            show_images(x_gen)
 
             if epoch % 10 == 9:
                 show_images(x_gen)
