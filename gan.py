@@ -4,6 +4,7 @@ GAN made with pytorch based on the paper,
 Generative Adversarial Nets. Goodfellow, Abadie, et al.
 
 Params: https://github.com/goodfeli/adversarial/blob/master/mnist.yaml
+Tuning: https://github.com/lyeoni/pytorch-mnist-GAN/blob/master/pytorch-mnist-GAN.ipynb
 """
 """ Experiment Design
 Adversarial modelling framework - 2 models.
@@ -37,6 +38,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset
+from torch.autograd import Variable
 
 import matplotlib.pyplot as plt
 
@@ -187,7 +189,7 @@ def noise(dimension, batch_size):
     """
     Produce noise for generator.
     """
-    return torch.rand((batch_size, dimension))
+    return Variable(torch.randn((batch_size, dimension)))
 
 
 def disc_loss(disc_real: torch.Tensor, disc_gen: torch.Tensor, batch_size: int) -> torch.Tensor:
