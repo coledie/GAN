@@ -1,5 +1,6 @@
 # GAN
-One weekend GAN.
+
+GAN implementations w/ PyTorch.
 
 ## Setup
 
