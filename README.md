@@ -15,7 +15,7 @@ python3 -m pip install -r requirements.txt
 3. Run GAN
 
 ``` bash
-python3 gan.py
+python3 gan/gan.py
 ```
 
 ## Experiment Setup
@@ -45,3 +45,9 @@ Training is done by alternating k steps optimizing the discriminator
 and one step for the generator.
 It is important that both players improve at roughly the same rate,
 else will get issues like mode collapse and poor generated images.
+
+## References
+
+(More in relevant files)
+
+[GAN Survey](https://arxiv.org/ftp/arxiv/papers/2006/2006.05132.pdf)
